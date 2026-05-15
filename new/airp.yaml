@@ -1,0 +1,183 @@
+# ══════════════════════════════════════════════════════════════════
+# AIRP Configuration File
+# All behavior is controlled here. No code changes needed.
+# ══════════════════════════════════════════════════════════════════
+
+# ── General ──────────────────────────────────────────────────────
+platform:
+  name: "ShopFast AIRP"
+  environment: "production"          # used in GPT prompts for context
+  risk_tolerance: "medium"           # low | medium | high
+  min_confidence_to_act: 0.75        # below this → always require human approval
+  auto_approve_below_risk: "low"     # low risk actions can skip human approval
+  incident_history_days: 90          # how far back to look for similar incidents
+
+# ── Kubernetes ───────────────────────────────────────────────────
+kubernetes:
+  namespace: "shopfast"
+  discovery:
+    enabled: true
+    # How to discover services and their dependencies
+    # Options: prometheus_labels | service_mesh | manual
+    method: "prometheus_labels"
+    # Label on K8s services that marks them as monitored
+    monitored_label: "airp.monitored=true"
+    # How often to refresh the discovered service list (seconds)
+    refresh_interval: 300
+  scaling:
+    max_replicas_per_service: 10
+    min_replicas_per_service: 1
+    cooldown_seconds: 120            # wait this long before scaling again
+
+# ── Prometheus ───────────────────────────────────────────────────
+prometheus:
+  url: "${PROMETHEUS_URL}"           # injected from env var
+  # How to discover which metrics belong to which service
+  service_label: "service"          # the Prometheus label that identifies service name
+  # Baseline window: used to calculate "normal" for anomaly detection
+  baseline_window: "1h"
+  anomaly_window: "5m"              # current window to compare against baseline
+  # Multiplier: a metric is "anomalous" if current > baseline * threshold_multiplier
+  threshold_multiplier: 2.0
+  # Minimum absolute value before anomaly is flagged (avoids noise on near-zero metrics)
+  min_absolute_threshold: 0.01
+  # Metric categories to always collect per service
+  metric_categories:
+    RED:                             # Rate, Errors, Duration
+      - "rate(http_requests_total[5m])"
+      - "rate(http_requests_total{status=~'5..'}[5m])"
+      - "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))"
+      - "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))"
+    USE:                             # Utilization, Saturation, Errors
+      - "rate(process_cpu_seconds_total[5m])"
+      - "process_resident_memory_bytes"
+      - "go_goroutines"
+    CUSTOM:                          # Additional metrics - add any Prometheus metric here
+      - "db_connection_pool_usage_percent"
+      - "gc_pause_duration_ms"
+      - "payment_queue_length"
+      - "request_timeouts_total"
+      - "memory_usage_mb"
+
+# ── Anomaly Detection ────────────────────────────────────────────
+anomaly_detection:
+  # Scoring: each anomalous metric adds to the service's anomaly score
+  weights:
+    latency_p99: 3.0                 # high weight - latency impacts users directly
+    error_rate: 3.0
+    latency_p50: 2.0
+    cpu_usage: 1.5
+    memory_usage: 2.0
+    connection_pool: 2.5
+    gc_pause: 2.0
+    queue_length: 1.5
+    timeout_rate: 2.0
+  # Minimum anomaly score for a service to be considered "affected"
+  affected_threshold: 2.0
+  # Minimum anomaly score for a service to be the "root cause candidate"
+  root_cause_threshold: 4.0
+
+# ── GPT / AI ─────────────────────────────────────────────────────
+ai:
+  model: "gpt-4o"
+  max_tokens: 2000
+  temperature: 0.2                   # low = more deterministic/consistent
+  # How many similar past incidents to inject into RCA prompt
+  historical_context_count: 3
+  # Minimum similarity score (0-1) for a past incident to be included
+  historical_similarity_threshold: 0.6
+
+# ── Remediation Actions ──────────────────────────────────────────
+# These are the actions the Remediation Agent can recommend.
+# GPT picks from this list based on diagnosis.
+# Add new action types here without changing code.
+remediation_actions:
+  scale_up:
+    description: "Increase replica count to distribute load"
+    applicable_to: ["high_memory", "high_cpu", "high_latency", "gc_pauses", "saturation"]
+    risk: "low"
+    reversible: true
+    kubectl_template: "kubectl scale deployment/{service} --replicas={value} --namespace={namespace}"
+    rollback_template: "kubectl scale deployment/{service} --replicas={original_value} --namespace={namespace}"
+    constraints:
+      max_value_from_config: "kubernetes.scaling.max_replicas_per_service"
+
+  scale_down:
+    description: "Decrease replica count"
+    applicable_to: ["low_traffic", "cost_optimization"]
+    risk: "medium"
+    reversible: true
+    kubectl_template: "kubectl scale deployment/{service} --replicas={value} --namespace={namespace}"
+    rollback_template: "kubectl scale deployment/{service} --replicas={original_value} --namespace={namespace}"
+
+  rolling_restart:
+    description: "Rolling restart to clear memory leaks or bad state"
+    applicable_to: ["memory_leak", "gc_pauses", "deadlock", "bad_state"]
+    risk: "low"
+    reversible: false                # restart itself can't be undone, but impact is low
+    kubectl_template: "kubectl rollout restart deployment/{service} --namespace={namespace}"
+    rollback_template: "kubectl rollout undo deployment/{service} --namespace={namespace}"
+
+  increase_memory_limit:
+    description: "Increase memory resource limit"
+    applicable_to: ["memory_leak", "oom_killed", "high_memory"]
+    risk: "medium"
+    reversible: true
+    kubectl_template: "kubectl set resources deployment/{service} --limits=memory={value} --namespace={namespace}"
+    rollback_template: "kubectl set resources deployment/{service} --limits=memory={original_value} --namespace={namespace}"
+
+  increase_cpu_limit:
+    description: "Increase CPU resource limit"
+    applicable_to: ["cpu_throttling", "high_cpu"]
+    risk: "medium"
+    reversible: true
+    kubectl_template: "kubectl set resources deployment/{service} --limits=cpu={value} --namespace={namespace}"
+    rollback_template: "kubectl set resources deployment/{service} --limits=cpu={original_value} --namespace={namespace}"
+
+  rollback_deployment:
+    description: "Roll back to previous deployment version"
+    applicable_to: ["bad_deployment", "regression", "config_error"]
+    risk: "medium"
+    reversible: true
+    kubectl_template: "kubectl rollout undo deployment/{service} --namespace={namespace}"
+    rollback_template: "kubectl rollout undo deployment/{service} --namespace={namespace}"
+
+  cordon_node:
+    description: "Cordon a Kubernetes node to prevent new pods being scheduled"
+    applicable_to: ["node_failure", "node_pressure"]
+    risk: "high"
+    reversible: true
+    kubectl_template: "kubectl cordon {node_name}"
+    rollback_template: "kubectl uncordon {node_name}"
+
+# ── Notification ─────────────────────────────────────────────────
+notifications:
+  slack_channel: "#incidents"
+  include_metrics_in_alert: true
+  include_dependency_graph: true
+  include_confidence_score: true
+
+# ── Validation (post-fix checks) ─────────────────────────────────
+validation:
+  wait_seconds_after_action: 30     # wait before checking recovery
+  max_validation_attempts: 3
+  check_interval_seconds: 30
+  # A service is "recovered" when its anomaly score drops below this
+  recovery_anomaly_threshold: 1.0
+
+# ── Plugins ──────────────────────────────────────────────────────
+# Enable/disable agent plugins
+plugins:
+  log_analysis:
+    enabled: false                   # requires Loki or similar
+    loki_url: "${LOKI_URL}"
+  trace_analysis:
+    enabled: false                   # requires Jaeger or similar
+    jaeger_url: "${JAEGER_URL}"
+  pagerduty:
+    enabled: false
+    api_key: "${PAGERDUTY_API_KEY}"
+  jira:
+    enabled: false
+    url: "${JIRA_URL}"
+    project_key: "INC"
