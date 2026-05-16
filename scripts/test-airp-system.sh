@@ -60,7 +60,7 @@ fi
 
 # 3. Check PostgreSQL
 echo "3. Checking PostgreSQL..."
-if kubectl exec -n default deployment/postgres -- pg_isready -U airp > /dev/null 2>&1; then
+if kubectl exec -n shopfast deployment/postgres -- pg_isready -U airp > /dev/null 2>&1; then
     print_success "PostgreSQL is running"
 else
     print_error "PostgreSQL is not responding"
