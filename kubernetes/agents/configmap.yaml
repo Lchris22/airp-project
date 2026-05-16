@@ -1,0 +1,194 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airp-config
+  namespace: shopfast
+data:
+  airp.yaml: |
+    # AIRP V2 Configuration
+    
+    # Prometheus Configuration
+    prometheus:
+      url: "${PROMETHEUS_URL}"
+    
+    # Kubernetes Configuration
+    kubernetes:
+      namespace: "shopfast"
+      in_cluster: true
+      service_account: "airp-agent-sa"
+    
+    # AI Configuration
+    ai:
+      model: "gpt-4o"
+      temperature: 0.3
+      max_tokens: 2000
+    
+    # Platform Configuration
+    platform:
+      risk_tolerance: "medium"
+      min_confidence_to_act: 0.85
+      auto_approval_enabled: false
+    
+    # Service Discovery
+    service_discovery:
+      method: "prometheus"  # Options: prometheus, kubernetes, static
+      prometheus_url: "${PROMETHEUS_URL}"
+      refresh_interval_seconds: 60
+      
+    # Anomaly Detection Configuration
+    anomaly_detection:
+      enabled: true
+      baseline_window_minutes: 60
+      detection_threshold: 2.5  # Standard deviations
+      min_data_points: 10
+      
+      # Metric categories and their weights
+      metric_weights:
+        latency: 1.0
+        error_rate: 1.2
+        resource_usage: 0.8
+        throughput: 0.9
+      
+      # Auto-learning configuration
+      auto_learning:
+        enabled: true
+        learning_period_days: 7
+        update_frequency_hours: 24
+    
+    # Root Cause Analysis (RCA) Configuration
+    rca:
+      gpt_model: "gpt-4o"
+      max_tokens: 2000
+      temperature: 0.3
+      
+      # Analysis depth
+      correlation_depth: 3  # How many service hops to analyze
+      time_window_minutes: 15
+      
+      # Confidence thresholds
+      min_confidence: 0.6
+      high_confidence: 0.85
+    
+    # Remediation Configuration
+    remediation:
+      # Remediation action library
+      actions:
+        - name: "scale_deployment"
+          description: "Scale Kubernetes deployment replicas"
+          risk_level: "medium"
+          parameters:
+            - name: "deployment"
+              type: "string"
+              required: true
+            - name: "replicas"
+              type: "integer"
+              required: true
+            - name: "namespace"
+              type: "string"
+              required: true
+          kubectl_template: "kubectl scale deployment {deployment} --replicas={replicas} -n {namespace}"
+          rollback_template: "kubectl scale deployment {deployment} --replicas={original_replicas} -n {namespace}"
+          
+        - name: "restart_deployment"
+          description: "Restart Kubernetes deployment"
+          risk_level: "high"
+          parameters:
+            - name: "deployment"
+              type: "string"
+              required: true
+            - name: "namespace"
+              type: "string"
+              required: true
+          kubectl_template: "kubectl rollout restart deployment/{deployment} -n {namespace}"
+          rollback_template: "kubectl rollout undo deployment/{deployment} -n {namespace}"
+          
+        - name: "adjust_resources"
+          description: "Adjust CPU/Memory limits"
+          risk_level: "medium"
+          parameters:
+            - name: "deployment"
+              type: "string"
+              required: true
+            - name: "cpu_limit"
+              type: "string"
+              required: false
+            - name: "memory_limit"
+              type: "string"
+              required: false
+            - name: "namespace"
+              type: "string"
+              required: true
+          kubectl_template: "kubectl set resources deployment/{deployment} -n {namespace} --limits=cpu={cpu_limit},memory={memory_limit}"
+          
+        - name: "clear_cache"
+          description: "Clear application cache via API"
+          risk_level: "low"
+          parameters:
+            - name: "service_url"
+              type: "string"
+              required: true
+          http_template:
+            method: "POST"
+            url: "{service_url}/admin/cache/clear"
+            
+        - name: "toggle_feature_flag"
+          description: "Enable/disable feature flag"
+          risk_level: "low"
+          parameters:
+            - name: "flag_name"
+              type: "string"
+              required: true
+            - name: "enabled"
+              type: "boolean"
+              required: true
+          # Implementation depends on feature flag system
+      
+      # Auto-approval rules
+      auto_approval:
+        enabled: false  # Require human approval by default
+        rules:
+          - condition: "risk_level == 'low' AND confidence > 0.9"
+            auto_approve: true
+          - condition: "risk_level == 'medium' AND confidence > 0.95 AND off_hours"
+            auto_approve: true
+    
+    # Validation Configuration
+    validation:
+      enabled: true
+      wait_time_seconds: 120
+      success_criteria:
+        - metric: "latency"
+          threshold: "< baseline * 1.1"
+        - metric: "error_rate"
+          threshold: "< 1%"
+      max_retries: 3
+    
+    # Documentation Configuration
+    documentation:
+      enabled: true
+      storage: "database"  # Options: database, s3, local
+      template: "standard"
+      include_metrics: true
+      include_logs: true
+      
+    # Database Configuration
+    database:
+      host: "${DB_HOST}"
+      port: 5432
+      database: "airp"
+      user: "${DB_USER}"
+      password: "${DB_PASSWORD}"
+      
+    # Kubernetes Configuration
+    kubernetes:
+      in_cluster: true
+      namespace: "shopfast"
+      service_account: "airp-agent-sa"
+      
+    # Logging Configuration
+    logging:
+      level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+      format: "json"
+      include_trace_id: true
+
+# Made with Bob

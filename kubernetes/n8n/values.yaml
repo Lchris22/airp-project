@@ -1,0 +1,170 @@
+# n8n Helm Chart Values
+# Configured for MCP Server support
+
+# Image configuration
+image:
+  repository: n8nio/n8n
+  tag: "latest"  # Use latest stable version (currently 2.21.3+)
+  pullPolicy: Always
+
+# Global configuration
+main:
+  config:
+    n8n:
+      # Enable MCP server
+      mcp_server_enabled: true
+      # Encryption key for credentials
+      encryption_key: "n8n-airp-encryption-key-change-in-production"
+      # Hide usage page
+      hide_usage_page: true
+      # Protocol and host
+      protocol: "http"
+      host: "n8n.local"
+      # Editor base URL
+      editor_base_url: "http://n8n.local"
+      # Webhook URL
+      webhook_url: "http://n8n.local"
+      
+  # Database configuration - using PostgreSQL
+  db:
+    type: postgresdb
+    postgresdb:
+      host: postgres-service.default.svc.cluster.local
+      port: 5432
+      database: n8n
+      user: n8n
+      password: n8n_password
+      schema: public
+  
+  # Node.js configuration
+  node:
+    function_allow_builtin: "*"
+    function_allow_external: "*"
+
+# Secret configuration
+secret:
+  n8n:
+    encryption_key: "n8n-airp-encryption-key-change-in-production"
+
+# Resources configuration
+resources:
+  limits:
+    memory: 1024Mi
+    cpu: 1000m
+  requests:
+    memory: 512Mi
+    cpu: 500m
+
+# Service configuration
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 5678
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
+
+# Ingress configuration (optional, using LoadBalancer for now)
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: n8n.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: n8n-tls
+      hosts:
+        - n8n.local
+
+# Persistence configuration
+persistence:
+  enabled: true
+  storageClass: "default"
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+# Scaling configuration
+scaling:
+  enabled: false
+  webhook:
+    enabled: false
+  worker:
+    enabled: false
+
+# Deployment configuration
+deployment:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+# Environment variables
+extraEnv:
+  - name: N8N_MCP_SERVER_ENABLED
+    value: "true"
+  - name: N8N_LOG_LEVEL
+    value: "info"
+  - name: N8N_METRICS
+    value: "true"
+  - name: EXECUTIONS_DATA_SAVE_ON_ERROR
+    value: "all"
+  - name: EXECUTIONS_DATA_SAVE_ON_SUCCESS
+    value: "all"
+  - name: EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS
+    value: "true"
+  - name: N8N_DIAGNOSTICS_ENABLED
+    value: "false"
+  - name: N8N_PERSONALIZATION_ENABLED
+    value: "false"
+  - name: N8N_VERSION_NOTIFICATIONS_ENABLED
+    value: "false"
+  - name: N8N_TEMPLATES_ENABLED
+    value: "true"
+  - name: N8N_PUBLIC_API_DISABLED
+    value: "false"
+  - name: N8N_HIRING_BANNER_ENABLED
+    value: "false"
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "5678"
+  prometheus.io/path: "/metrics"
+
+# Liveness and readiness probes
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /healthz
+    port: 5678
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /healthz
+    port: 5678
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Made with Bob

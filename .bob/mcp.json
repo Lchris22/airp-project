@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "n8n-mcp": {
+      "type": "http",
+      "url": "http://localhost:5678/mcp-server/http",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5MjI0ZWEzYi0yMTMxLTQxY2MtYmQ4OC1kOTNjMjU4MzEwYzAiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6ImVjM2NmYjQ2LTQzNmUtNGViNy05ZWE3LTMwODRlZmIzMGY5ZSIsImlhdCI6MTc3ODkwNDQyMn0.TWZfnNBOu7EMFfMAZjc_gCZ3Hzgxq4zyYGofejyPrsM"
+      }
+    }
+  }
+}
+
+// Made with Bob

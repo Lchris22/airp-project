@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airp-agents
+  namespace: shopfast
+  labels:
+    app: airp-agents
+    version: v2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: airp-agents
+  template:
+    metadata:
+      labels:
+        app: airp-agents
+        version: v2
+    spec:
+      serviceAccountName: airp-agent-sa
+      containers:
+      - name: airp-agents
+        image: leninfernandes/airp-agents:v2
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: airp-secrets
+              key: OPENAI_API_KEY
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: airp-secrets
+              key: DB_HOST
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: airp-secrets
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: airp-secrets
+              key: DB_PASSWORD
+        - name: PROMETHEUS_URL
+          valueFrom:
+            secretKeyRef:
+              name: airp-secrets
+              key: PROMETHEUS_URL
+        - name: CONFIG_PATH
+          value: "/config/airp.yaml"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: config
+        configMap:
+          name: airp-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airp-agents
+  namespace: shopfast
+  labels:
+    app: airp-agents
+spec:
+  type: LoadBalancer
+  selector:
+    app: airp-agents
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  sessionAffinity: None
+
+# Made with Bob
