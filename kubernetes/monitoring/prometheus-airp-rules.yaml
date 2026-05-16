@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-airp-rules
+  namespace: shopfast
+  labels:
+    app: prometheus
+    release: prometheus
+data:
+  airp-rules.yml: |
+    groups:
+    - name: airp_critical_incidents
+      interval: 30s
+      rules:
+      # S1 Checkout Service Alerts
+      - alert: HighCheckoutLatency
+        expr: checkout_latency_ms > 500
+        for: 1m
+        labels:
+          severity: critical
+          service: s1-checkout
+          component: checkout
+          team: platform
+        annotations:
+          summary: "Critical: High checkout latency detected"
+          description: "S1 checkout service latency is {{ $value }}ms (threshold: 500ms). This may impact customer transactions."
+          runbook_url: "https://wiki.company.com/runbooks/high-checkout-latency"
+      
+      - alert: CheckoutErrorRate
+        expr: rate(checkout_errors_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: s1-checkout
+          component: checkout
+          team: platform
+        annotations:
+          summary: "Critical: High checkout error rate"
+          description: "S1 checkout error rate is {{ $value | humanizePercentage }} (threshold: 5%). Customers may be unable to complete purchases."
+      
+      # S2 Inventory Service Alerts
+      - alert: HighDatabasePoolUsage
+        expr: db_pool_usage_percent > 80
+        for: 2m
+        labels:
+          severity: critical
+          service: s2-inventory
+          component: database
+          team: data
+        annotations:
+          summary: "Critical: High database connection pool usage"
+          description: "S2 inventory service DB pool usage is {{ $value }}% (threshold: 80%). Database connections may be exhausted."
+          runbook_url: "https://wiki.company.com/runbooks/high-db-pool-usage"
+      
+      - alert: InventoryQueryLatency
+        expr: inventory_query_duration_seconds > 2
+        for: 1m
+        labels:
+          severity: critical
+          service: s2-inventory
+          component: database
+          team: data
+        annotations:
+          summary: "Critical: Slow inventory queries"
+          description: "S2 inventory query latency is {{ $value }}s (threshold: 2s). This may cause inventory sync delays."
+      
+      # S3 Pricing Service Alerts
+      - alert: HighGCPause
+        expr: gc_pause_ms > 200
+        for: 1m
+        labels:
+          severity: critical
+          service: s3-pricing
+          component: jvm
+          team: platform
+        annotations:
+          summary: "Critical: High GC pause time detected"
+          description: "S3 pricing service GC pause is {{ $value }}ms (threshold: 200ms). Service may be experiencing memory pressure."
+          runbook_url: "https://wiki.company.com/runbooks/high-gc-pause"
+      
+      - alert: PricingServiceMemoryPressure
+        expr: jvm_memory_used_bytes{service="s3-pricing"} / jvm_memory_max_bytes{service="s3-pricing"} > 0.85
+        for: 3m
+        labels:
+          severity: critical
+          service: s3-pricing
+          component: jvm
+          team: platform
+        annotations:
+          summary: "Critical: High memory usage in pricing service"
+          description: "S3 pricing service memory usage is {{ $value | humanizePercentage }} (threshold: 85%). OOM may be imminent."
+      
+      # Cross-Service Alerts
+      - alert: ServiceDown
+        expr: up{job=~"s1-checkout|s2-inventory|s3-pricing"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: availability
+          team: sre
+        annotations:
+          summary: "Critical: Service is down"
+          description: "Service {{ $labels.job }} is not responding. Immediate attention required."
+          runbook_url: "https://wiki.company.com/runbooks/service-down"
+      
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: resources
+          team: platform
+        annotations:
+          summary: "Warning: High CPU usage"
+          description: "Service {{ $labels.job }} CPU usage is {{ $value | humanizePercentage }} (threshold: 80%)."
+      
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / node_memory_MemTotal_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: resources
+          team: platform
+        annotations:
+          summary: "Warning: High memory usage"
+          description: "Service {{ $labels.job }} memory usage is {{ $value | humanizePercentage }} (threshold: 80%)."
+    
+    - name: airp_system_health
+      interval: 1m
+      rules:
+      # AIRP Agent Health
+      - alert: AIRPAgentDown
+        expr: up{job="airp-agents"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: airp
+          team: sre
+        annotations:
+          summary: "Critical: AIRP agent is down"
+          description: "AIRP agent at {{ $labels.instance }} is not responding. Autonomous incident resolution is disabled."
+      
+      - alert: AIRPAgentHighLatency
+        expr: airp_agent_response_time_seconds > 5
+        for: 3m
+        labels:
+          severity: warning
+          component: airp
+          team: sre
+        annotations:
+          summary: "Warning: AIRP agent high latency"
+          description: "AIRP agent response time is {{ $value }}s (threshold: 5s). Incident resolution may be delayed."
+      
+      # n8n Workflow Health
+      - alert: N8NWorkflowFailed
+        expr: increase(n8n_workflow_failed_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: n8n
+          team: sre
+        annotations:
+          summary: "Warning: n8n workflow execution failed"
+          description: "n8n workflow {{ $labels.workflow_name }} has failed {{ $value }} times in the last 5 minutes."
+      
+      - alert: N8NDown
+        expr: up{job="n8n"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: n8n
+          team: sre
+        annotations:
+          summary: "Critical: n8n is down"
+          description: "n8n workflow automation platform is not responding. AIRP workflows cannot execute."
+
+# Made with Bob

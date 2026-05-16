@@ -1,0 +1,28 @@
+# Alertmanager configuration for AIRP
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'airp-n8n-webhook'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'airp-n8n-webhook'
+        continue: true
+    
+    receivers:
+    - name: 'airp-n8n-webhook'
+      webhook_configs:
+      - url: 'http://n8n.n8n.svc.cluster.local/webhook/incident-trigger'
+        send_resolved: true
+        http_config:
+          follow_redirects: true
+        max_alerts: 0
+
+# Made with Bob
