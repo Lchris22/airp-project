@@ -1,0 +1,193 @@
+{
+"name": "AIRP - Incident Resolution (No Slack)",
+"nodes": [
+{
+"parameters": {
+"httpMethod": "POST",
+"path": "incident-trigger",
+"responseMode": "responseNode",
+"options": {}
+},
+"id": "node-webhook-trigger",
+"name": "Incident Alert Received",
+"type": "n8n-nodes-base.webhook",
+"typeVersion": 1,
+"position": [240, 300]
+},
+{
+"parameters": {
+"respondWith": "json",
+"responseBody": "={{ JSON.stringify({status: 'received', incident_id: Date.now()}) }}"
+},
+"id": "node-webhook-response",
+"name": "Acknowledge Alert",
+"type": "n8n-nodes-base.respondToWebhook",
+"typeVersion": 1,
+"position": [460, 200]
+},
+{
+"parameters": {
+"method": "POST",
+"url": "=http://{{ $vars.AIRP_AGENTS_IP }}:8080/monitor",
+"sendBody": true,
+"bodyContentType": "json",
+"jsonBody": "={{ JSON.stringify($json.body) }}",
+"options": {
+"timeout": 30000
+}
+},
+"id": "node-monitor-agent",
+"name": "Monitor Agent",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 4,
+"position": [680, 300]
+},
+{
+"parameters": {
+"method": "POST",
+"url": "=http://{{ $vars.AIRP_AGENTS_IP }}:8080/correlate",
+"sendBody": true,
+"bodyContentType": "json",
+"jsonBody": "={{ JSON.stringify($json) }}",
+"options": {
+"timeout": 30000
+}
+},
+"id": "node-correlation-agent",
+"name": "Correlation Agent",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 4,
+"position": [900, 300]
+},
+{
+"parameters": {
+"method": "POST",
+"url": "=http://{{ $vars.AIRP_AGENTS_IP }}:8080/rca",
+"sendBody": true,
+"bodyContentType": "json",
+"jsonBody": "={{ JSON.stringify($json) }}",
+"options": {
+"timeout": 60000
+}
+},
+"id": "node-rca-agent",
+"name": "RCA Agent (GPT)",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 4,
+"position": [1120, 300]
+},
+{
+"parameters": {
+"method": "POST",
+"url": "=http://{{ $vars.AIRP_AGENTS_IP }}:8080/remediate",
+"sendBody": true,
+"bodyContentType": "json",
+"jsonBody": "={{ JSON.stringify($json) }}",
+"options": {
+"timeout": 60000
+}
+},
+"id": "node-remediation-agent",
+"name": "Remediation Agent (GPT)",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 4,
+"position": [1340, 300]
+},
+{
+"parameters": {
+"method": "POST",
+"url": "=http://{{ $vars.AIRP_AGENTS_IP }}:8080/execute",
+"sendBody": true,
+"bodyContentType": "json",
+"jsonBody": "={{ JSON.stringify({ deployment: 's3-pricing', replicas: 4, namespace: 'shopfast' }) }}",
+"options": {
+"timeout": 180000
+}
+},
+"id": "node-k8s-operator",
+"name": "K8s Operator — Scale S3",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 4,
+"position": [1560, 300]
+},
+{
+"parameters": {
+"method": "POST",
+"url": "=http://{{ $vars.AIRP_AGENTS_IP }}:8080/validate",
+"sendBody": true,
+"bodyContentType": "json",
+"jsonBody": "={{ JSON.stringify({ execution_result: $json, incident_id: $('RCA Agent (GPT)').item.json.incident_id }) }}",
+"options": {
+"timeout": 60000
+}
+},
+"id": "node-validation",
+"name": "Validate Recovery",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 4,
+"position": [1780, 300]
+},
+{
+"parameters": {
+"method": "POST",
+"url": "=http://{{ $vars.AIRP_AGENTS_IP }}:8080/document",
+"sendBody": true,
+"bodyContentType": "json",
+"jsonBody": "={{ JSON.stringify({ ...$('RCA Agent (GPT)').item.json, ...$('Remediation Agent (GPT)').item.json, validation: $json.validation }) }}",
+"options": {
+"timeout": 60000
+}
+},
+"id": "node-documentation",
+"name": "Documentation Agent",
+"type": "n8n-nodes-base.httpRequest",
+"typeVersion": 4,
+"position": [2000, 300]
+},
+{
+"parameters": {
+"respondWith": "json",
+"responseBody": "={{ JSON.stringify({status: 'completed', incident_id: $('RCA Agent (GPT)').item.json.incident_id, report: $json.report}) }}"
+},
+"id": "node-final-response",
+"name": "Return Final Report",
+"type": "n8n-nodes-base.respondToWebhook",
+"typeVersion": 1,
+"position": [2220, 300]
+}
+],
+"connections": {
+"Incident Alert Received": {
+"main": [
+[
+{"node": "Acknowledge Alert", "type": "main", "index": 0},
+{"node": "Monitor Agent", "type": "main", "index": 0}
+]
+]
+},
+"Monitor Agent": {
+"main": [[{"node": "Correlation Agent", "type": "main", "index": 0}]]
+},
+"Correlation Agent": {
+"main": [[{"node": "RCA Agent (GPT)", "type": "main", "index": 0}]]
+},
+"RCA Agent (GPT)": {
+"main": [[{"node": "Remediation Agent (GPT)", "type": "main", "index": 0}]]
+},
+"Remediation Agent (GPT)": {
+"main": [[{"node": "K8s Operator — Scale S3", "type": "main", "index": 0}]]
+},
+"K8s Operator — Scale S3": {
+"main": [[{"node": "Validate Recovery", "type": "main", "index": 0}]]
+},
+"Validate Recovery": {
+"main": [[{"node": "Documentation Agent", "type": "main", "index": 0}]]
+},
+"Documentation Agent": {
+"main": [[{"node": "Return Final Report", "type": "main", "index": 0}]]
+}
+},
+"settings": {
+"executionOrder": "v1"
+}
+}

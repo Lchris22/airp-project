@@ -41,6 +41,8 @@ data:
       baseline_window_minutes: 60
       detection_threshold: 2.5  # Standard deviations
       min_data_points: 10
+      affected_threshold: 0.3  # Minimum fraction of services affected to trigger correlation
+      root_cause_threshold: 0.7  # Confidence threshold for identifying root cause
       
       # Metric categories and their weights
       metric_weights:
